@@ -1,0 +1,9 @@
+{
+    "NodeID": "6672886",
+    "Temperature": null,
+    "Humidity": null,
+    "Name": "Motor2",
+    "SWITCH": 0,
+    "FLOAT_SWITCH_IN": 1,
+    "FLOAT_SWITCH_OUT": 0
+}
