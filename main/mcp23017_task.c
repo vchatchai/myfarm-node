@@ -7,10 +7,11 @@
 #include "freertos/queue.h"
 #include "mcp23017_task.h"
 
+#include "cJSON.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_err.h"
-
+#include "mqtt_task.h"
 #include "driver/i2c.h"
 
 static const char *TAG = "MCP23017_TASK";
@@ -160,7 +161,46 @@ void mcp24017_task_led_alert_for_select_wifi(void *arg) {
 	}
 
 }
+void mcp24017_task_led_alert_for_mqtt_connect(void *arg) {
+	int value = 0;
+		printf("mcp24017_task_led_alert_for_mqtt_connect");
+	while (1) {
+		uint8_t retb = 0;
+		i2c_master_mcp23017_read(I2C_EXAMPLE_MASTER_NUM, MCP23017_REG_GPIOB,
+				&retb, 1);
 
+		reg_t io_port_b;
+		convert_int8_to_reg(retb, &read_io_port_b);
+		io_port_b.port0 = value;
+		io_port_b.port3 = value;
+
+		value = !value;
+		write_registor_mcp23017(MCP23017_REG_GPIOB, io_port_b);
+		vTaskDelay(2000 / portTICK_RATE_MS);
+
+	}
+
+}
+void mcp24017_task_led_alert(void *arg) {
+	int value = 0;
+	printf("mcp24017_task_led_alert");
+	while (1) {
+		uint8_t retb = 0;
+		i2c_master_mcp23017_read(I2C_EXAMPLE_MASTER_NUM, MCP23017_REG_GPIOB,
+				&retb, 1);
+
+		reg_t io_port_b;
+		convert_int8_to_reg(retb, &read_io_port_b);
+		io_port_b.port0 = value;
+		io_port_b.port3 = value;
+
+		value = !value;
+		write_registor_mcp23017(MCP23017_REG_GPIOB, io_port_b);
+		vTaskDelay(3000 / portTICK_RATE_MS);
+
+	}
+
+}
 void switch_status_task(void *arg) { 
 
 
@@ -194,6 +234,11 @@ void mcp24017_task_read_io(void *arg) {
 void mcp24017_task(void *arg) {
 
 	int smart_config = 0;
+
+	int previousStatus = read_io_port_b.port2;
+	char topic[] = "/myfarm/node/";
+	strcat(topic,str_chipid);
+	TaskHandle_t xTask2Handle = NULL;
 	while (1) {
 
 //		printBinary(read_io_port_a);
@@ -202,8 +247,12 @@ void mcp24017_task(void *arg) {
 //		printf("\nport A: %d%d%d%d%d%d%d%d", read_io_port_a.port7, read_io_port_a.port6, read_io_port_a.port5, read_io_port_a.port4, read_io_port_a.port3, read_io_port_a.port2, read_io_port_a.port1, read_io_port_a.port0);
 //		printf("\nport B: %d%d%d%d%d%d%d%d", read_io_port_b.port7, read_io_port_b.port6, read_io_port_b.port5, read_io_port_b.port4, read_io_port_b.port3, read_io_port_b.port2, read_io_port_b.port1, read_io_port_b.port0);
 
+		/*
 		if (!read_io_port_b.port2) {
 			smart_config++;
+			if(smart_config == 1) {
+
+			}
 		} else {
 			smart_config = 0;
 		}
@@ -213,6 +262,62 @@ void mcp24017_task(void *arg) {
 			xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
 		}
 		vTaskDelay(1000 / portTICK_RATE_MS);
+		*/
+
+		int status = read_io_port_b.port2;
+
+		if(status == 1) {
+			if(status == previousStatus) {
+				smart_config++;
+				if(smart_config == 5) {
+					TickType_t xTimeNow;
+					/* Obtain the current tick count */
+					xTimeNow = xTaskGetTickCount();
+
+					cJSON *root;
+					root = cJSON_CreateObject();
+					char str[80];
+
+
+					cJSON_AddStringToObject(root, "NodeID", str_chipid);
+					cJSON_AddStringToObject(root, "Name", "Motor2");
+					cJSON_AddNumberToObject(root, "SWITCH", 1);
+					char *out = cJSON_Print(root);
+					printf(out);
+
+//					int msg_id = esp_mqtt_client_publish(client, topic, out, 0, 1, 0);
+//					ESP_LOGI(TAG, "msg id: %d mcp24017_task %d : %s", msg_id, xTimeNow,out);
+//
+//					if(msg_id < 0) {
+//						if(xTask2Handle == NULL) {
+//							xTask2Handle = xTaskCreate(mcp24017_task_led_alert_for_mqtt_connect,
+//								"mcp24017_task_led_alert_for_mqtt_connect", 1024, NULL, 3, &xTask2Handle);
+//						}
+//					}else {
+//						if(xTask2Handle != NULL) {
+//							vTaskDelete(xTask2Handle);
+//							xTask2Handle = NULL;
+//
+//						}
+//					}
+
+
+
+
+					cJSON_Delete(root);
+					free(out);
+
+				}
+			}
+		}else {
+			smart_config = 0;
+		}
+
+//		if (smart_config == 50) {
+//			xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
+//		}
+		previousStatus = status;
+		vTaskDelay(100 / portTICK_RATE_MS);
 	}
 
 }

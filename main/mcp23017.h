@@ -22,10 +22,10 @@
 
 
 typedef struct {
-	unsigned int port0 :1;
+	unsigned int port0 :1;//LED
 	unsigned int port1 :1;
-	unsigned int port2 :1;
-	unsigned int port3 :1;
+	unsigned int port3 :1;//LED
+	unsigned int port2 :1;//switch
 	unsigned int port4 :1;
 	unsigned int port5 :1;
 	unsigned int port6 :1;

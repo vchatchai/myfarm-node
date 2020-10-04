@@ -24,7 +24,6 @@
 #include "cJSON.h"
 
 static const char *TAG = "MQTT_TASK";
-static uint8_t base_mac_addr[6] = { 0 };
 
 //CONFIG_LOG_DEFAULT_LEVEL = 4;
 
@@ -39,10 +38,10 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event) {
 
 //		msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 1,
 //				0);
-
-//		ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-
-		msg_id = esp_mqtt_client_subscribe(client, "#", 0);
+		char topic[] = "/myfarm/node/";
+		strcat(topic,str_chipid);
+		ESP_LOGI(TAG, "esp_mqtt_client_subscribe=%s", topic);
+		msg_id = esp_mqtt_client_subscribe(client, topic, 0);
 		ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
 //		msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
@@ -69,12 +68,33 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event) {
 		break;
 	case MQTT_EVENT_DATA:
 		ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-//		printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-//		printf("DATA=%.*s\r\n", event->data_len, event->data);
-//		char *out = create_objects();
-//		msg_id = esp_mqtt_client_publish(client, "/topic/test", out, 0, 1, 0);
-//		free(out);
-//            json_main();
+		printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+		printf("DATA=%.*s\r\n", event->data_len, event->data);
+
+
+		cJSON *json = cJSON_Parse(event->data);
+		char *string = cJSON_Print(json);
+		printf(string);
+
+	    if (json == NULL)
+	    {
+	        const char *error_ptr = cJSON_GetErrorPtr();
+	        if (error_ptr != NULL)
+	        {
+	            fprintf(stderr, "Error before: %s\n", error_ptr);
+	        }
+	    }else {
+
+	    	const cJSON *swtichStatus = cJSON_GetObjectItemCaseSensitive(json, "SWITCH");
+	        if (cJSON_IsNumber(swtichStatus)  )
+	         {
+	             int status = swtichStatus->valueint;
+
+	             ESP_LOGI(TAG, "status=%d", status);
+	         }
+	    }
+
+
 		break;
 	case MQTT_EVENT_ERROR:
 		ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
@@ -84,7 +104,7 @@ esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event) {
 }
 
 
-
+TaskHandle_t xTask2Handle = NULL;
 static void prvMqttTimerCallback(TimerHandle_t xTimer) {
 	TickType_t xTimeNow;
 	/* Obtain the current tick count */
@@ -99,9 +119,6 @@ static void prvMqttTimerCallback(TimerHandle_t xTimer) {
 	humidity = atof(str);
 
 
-	char str_chipid[6];
-	sprintf(str_chipid,"%d%d%d%d%d%d",base_mac_addr[0],base_mac_addr[1],base_mac_addr[2],base_mac_addr[3],base_mac_addr[4],base_mac_addr[5]);
-
 	cJSON_AddStringToObject(root, "NodeID", str_chipid);
 	cJSON_AddNumberToObject(root, "Temperature", temperature);
 	cJSON_AddNumberToObject(root, "Humidity", humidity);
@@ -111,16 +128,25 @@ static void prvMqttTimerCallback(TimerHandle_t xTimer) {
 	cJSON_AddNumberToObject(root, "FLOAT_SWITCH_OUT", read_io_port_b.port7);
 	char *out = cJSON_Print(root);
 
-	int msg_id = esp_mqtt_client_publish(client, "/farm_home/node/status", out, 0, 1, 0);
+	int msg_id = esp_mqtt_client_publish(client, "/myfarm/node/status", out, 0, 1, 0);
+	ESP_LOGI(TAG, "msg id: %d xTaskGetTickCount %d : %s", msg_id, xTimeNow,out);
 
 	if(msg_id < 0) {
-
+		if(xTask2Handle == NULL) {
+			xTask2Handle = xTaskCreate(mcp24017_task_led_alert_for_mqtt_connect,
+				"mcp24017_task_led_alert_for_mqtt_connect", 1024, NULL, 3, &xTask2Handle);
+		}
 	}else {
+		if(xTask2Handle != NULL) {
+			vTaskDelete(xTask2Handle);
+			xTask2Handle = NULL;
 
+		}
 	}
 
 
-	ESP_LOGI(TAG, "msg id: %d xTaskGetTickCount %d : %s", msg_id, xTimeNow,out);
+
+
 	cJSON_Delete(root);
 	free(out);
 
@@ -136,7 +162,10 @@ esp_err_t mqtt_setup(void) {
 
 	esp_efuse_mac_get_default(base_mac_addr);
 
-	esp_mqtt_client_config_t mqtt_cfg = { .host = "192.168.1.107",
+
+	sprintf(str_chipid,"%d%d%d%d%d%d",base_mac_addr[0],base_mac_addr[1],base_mac_addr[2],base_mac_addr[3],base_mac_addr[4],base_mac_addr[5]);
+
+	esp_mqtt_client_config_t mqtt_cfg = { .host = "192.168.1.109",
 			.event_handle = mqtt_event_handler, .port = 1883,
 			.client_id="motor1"
 
